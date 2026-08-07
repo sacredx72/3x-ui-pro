@@ -729,31 +729,42 @@ install_panel() {
 
     cd /usr/local/
 
-    if [[ -n "$PANEL_VERSION" ]]; then
-        tag_version="v${PANEL_VERSION#v}"
-        if ! curl -fsLo /dev/null "https://api.github.com/repos/AlexeyLCP/lucx-ui/releases/tags/${tag_version}" \
-           && ! curl -4 -fsLo /dev/null "https://api.github.com/repos/AlexeyLCP/lucx-ui/releases/tags/${tag_version}"; then
-            echo "3x-ui release ${tag_version} not found." && exit 1
-        fi
-    else
-        tag_version=$(curl -Ls "https://api.github.com/repos/AlexeyLCP/lucx-ui/releases/latest" \
-            | grep -m1 '"tag_name":' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
-        if [[ ! "$tag_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            tag_version=$(curl -4 -Ls "https://api.github.com/repos/AlexeyLCP/lucx-ui/releases/latest" \
-                | grep -m1 '"tag_name":' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
-        fi
-        if [[ ! "$tag_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Failed to fetch 3x-ui version." && exit 1
-        fi
+    # Проверка и получение версии
+if [[ -n "$PANEL_VERSION" ]]; then
+    # Если пользователь указал версию, приводим к виду с префиксом 'v'
+    tag_version="v${PANEL_VERSION#v}"
+    # Проверяем существование тега через API (сначала обычный запрос, затем через IPv4)
+    if ! curl -fsLo /dev/null "https://api.github.com/repos/AlexeyLCP/lucx-ui/releases/tags/${tag_version}" \
+       && ! curl -4 -fsLo /dev/null "https://api.github.com/repos/AlexeyLCP/lucx-ui/releases/tags/${tag_version}"; then
+        echo "lucx-ui release ${tag_version} not found." && exit 1
     fi
+else
+    # Получаем последний релиз
+    tag_version=$(curl -Ls "https://api.github.com/repos/AlexeyLCP/lucx-ui/releases/latest" \
+        | grep -m1 '"tag_name":' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
+    
+    # Проверка формата: допускаем основной номер и необязательный суффикс (например, -lucx.74)
+    # Шаблон: vX.Y.Z-суффикс (суффикс может содержать буквы, цифры и точки)
+    if [[ ! "$tag_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        # Повторная попытка через IPv4
+        tag_version=$(curl -4 -Ls "https://api.github.com/repos/AlexeyLCP/lucx-ui/releases/latest" \
+            | grep -m1 '"tag_name":' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
+    fi
+    if [[ ! "$tag_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        echo "Failed to fetch lucx-ui version." && exit 1
+    fi
+fi
 
-    echo "Installing 3x-ui ${tag_version} ..."
-    wget -N -O /usr/local/x-ui-linux-$(_arch).tar.gz \
-        "https://github.com/AlexeyLCP/lucx-ui/releases/download/${tag_version}/x-ui-linux-$(_arch).tar.gz"
-    [[ $? -ne 0 ]] && echo "Download failed." && exit 1
+echo "Installing lucx-ui ${tag_version} ..."
 
-    wget -O /usr/bin/x-ui-temp https://raw.githubusercontent.com/AlexeyLCP/lucx-ui/main/x-ui.sh
-    [[ $? -ne 0 ]] && echo "Failed to download x-ui.sh" && exit 1
+# Скачивание архива с новым репозиторием
+wget -N -O /usr/local/x-ui-linux-$(_arch).tar.gz \
+    "https://github.com/AlexeyLCP/lucx-ui/releases/download/${tag_version}/x-ui-linux-$(_arch).tar.gz"
+[[ $? -ne 0 ]] && echo "Download failed." && exit 1
+
+# Скачивание управляющего скрипта из нового репозитория
+wget -O /usr/bin/x-ui-temp https://raw.githubusercontent.com/AlexeyLCP/lucx-ui/main/x-ui.sh
+[[ $? -ne 0 ]] && echo "Failed to download x-ui.sh" && exit 1
 
     [[ -d /usr/local/x-ui/ ]] && systemctl stop x-ui 2>/dev/null; rm -rf /usr/local/x-ui/
 
